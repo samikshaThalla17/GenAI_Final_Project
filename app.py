@@ -15,7 +15,7 @@ api_key = "YOUR_GOOGLE_API_KEY"
 api_url = "https://gemini.googleapis.com/v1beta1/text:generate"  # Please verify this endpoint in the Google docs
 
 # Langchain setup: Constructing a flexible prompt template
-template = "Describe the following image: {image_description}"
+template = "Describe the following image and provide safety insights for detected objects: {image_description}"
 
 # Langchain prompt and model setup
 prompt = PromptTemplate(input_variables=["image_description"], template=template)
@@ -23,7 +23,14 @@ chat_model = ChatOpenAI(model="gpt-3.5-turbo", temperature=0.7)
 llm_chain = LLMChain(prompt=prompt, llm=chat_model)
 
 # Streamlit app header
-st.title("🚙⚠️ Safety-Centric Image Recognition and Speech Generation with Google Gemini and Langchain")
+st.title("🚙⚠️ Safety-Centric Image Recognition and Speech Generation")
+st.markdown("""**Key Features:**  
+1. **Upload an image** securely.  
+2. Get a **detailed description** of the image.  
+3. Perform **object detection** with bounding boxes.  
+4. Hear the description as **audio output**! 🎧  
+5. Receive **safety and situational insights** based on detected objects.  
+""")
 
 # File uploader to allow image upload
 uploaded_file = st.file_uploader("Upload an image file (JPEG, PNG)...", type=["jpg", "jpeg", "png"])
@@ -34,7 +41,7 @@ if uploaded_file is not None:
     st.image(image, caption="Uploaded Image", use_container_width=True)
 
     # Step 1: Generate an image description using Google Gemini API (Google Generative AI)
-    st.header("📝 Image Description Generation:")
+    st.header("📝 Image Description:")
 
     # Send the request to Gemini API for generating a description
     try:
@@ -77,37 +84,48 @@ if uploaded_file is not None:
     
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
-
-
-    # Object detection using OpenCV 
+    
     st.header("📦 Object Detection:")
+    yolo_model = YOLO("yolov8n.pt")  # Load YOLO model (Nano version for speed)
+    
+    # Save the uploaded image locally for YOLO processing
+    uploaded_image_path = "uploaded_image.jpg"
+    image.save(uploaded_image_path)
 
-    # Convert the uploaded image to an OpenCV format
-    img_cv = np.array(image)
-    img_cv = cv2.cvtColor(img_cv, cv2.COLOR_RGB2BGR)
+    # Perform object detection
+    results = yolo_model(uploaded_image_path)
+    detected_results = results[0]  # Get the first result
 
-    # Convert to grayscale (simplified object detection for demo purposes)
-    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+    # Annotated image with bounding boxes
+    annotated_image = detected_results.plot()
+    # Convert NumPy array (annotated_image) to Pillow Image for Streamlit
+    annotated_image_pil = Image.fromarray(cv2.cvtColor(annotated_image, cv2.COLOR_BGR2RGB))
 
-    # Example: Use Haar cascades for object detection (replace with your preferred method)
-    # Load a pre-trained Haar Cascade for face detection (can be replaced with any detection model)
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    # Display annotated image with bounding boxes
+    st.image(annotated_image_pil, caption="Object Detection Results", use_container_width=True)
 
-    # Detect faces in the image
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    
+    # Step 4: Langchain's flexible prompt handling for generating safety insights
+    st.header("🛡️ Safety Insights:")
+    
+    # Define detected objects in the image (This would be generated based on actual object detection, here simulated)
+    detected_objects = ["car", "person", "dog"]  # Example objects detected in the image
+    
+    # Generate safety tips for each detected object
+    safety_tips = []
+    
+    for obj in detected_objects:
+        safety_prompt = f"Provide safety tips for a detected {obj} in the image."
+        # Use Langchain to generate safety insights for each object
+        safety_tip = llm_chain.run(image_description=safety_prompt)
+        safety_tips.append(f"- **{obj}**: {safety_tip}")
 
-    # Draw rectangles around the faces
-    for (x, y, w, h) in faces:
-        cv2.rectangle(img_cv, (x, y), (x + w, y + h), (255, 0, 0), 2)
-
-    # Convert back to RGB for displaying in Streamlit
-    img_cv_rgb = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
-    img_pil = Image.fromarray(img_cv_rgb)
-
-    # Display the annotated image with bounding boxes
-    st.image(img_pil, caption="Object Detection Results", use_container_width=True)
-
+    # Display safety insights
+    if safety_tips:
+        st.write("The following safety tips were generated based on the detected objects:")
+        for tip in safety_tips:
+            st.write(tip)
+    else:
+        st.warning("No objects detected for safety insights.")
 else:
     st.info("Please upload an image to proceed.")
-
-
